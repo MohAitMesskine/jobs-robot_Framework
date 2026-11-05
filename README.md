@@ -1,10 +1,86 @@
 # MiniJob Maroc
 
-MiniJob est une plateforme de recherche d’emploi au Maroc réalisée avec Python et Flask. Elle propose un catalogue d’offres de démonstration à Casablanca, Rabat, Tanger, Marrakech, Agadir, Fès et en télétravail, une recherche multicritère, des comptes à rôles et le suivi des candidatures. Son identité visuelle reprend les couleurs rouge et verte du Maroc. Les rémunérations des offres sont indicatives.
+## Présentation du projet
 
-## Démarrer le site
+**MiniJob Maroc** est une application web de démonstration destinée à faciliter la recherche d’emploi au Maroc et la gestion des candidatures. Elle met en relation des candidats qui consultent des offres et postulent en ligne avec des équipes de recrutement qui examinent les candidatures reçues.
 
-Depuis le dossier du projet, créez un environnement virtuel et installez les dépendances :
+Le projet fournit un parcours complet de démonstration : consultation et filtrage des offres, création de compte, connexion, envoi d’une candidature et consultation des candidatures selon le rôle de l’utilisateur. L’interface est en français et reprend les couleurs rouge et verte du Maroc.
+
+> **Périmètre des données :** les offres et rémunérations affichées sont des exemples de démonstration. Elles ne constituent pas des offres d’emploi réelles ni une garantie de salaire.
+
+## Objectifs
+
+- Présenter un parcours de recherche d’emploi simple, lisible et utilisable sur ordinateur et mobile.
+- Permettre de rechercher des offres par mot-clé, ville et type de contrat.
+- Protéger les comptes et les candidatures avec une authentification par session.
+- Séparer les espaces candidat et équipe de recrutement et appliquer les permissions côté serveur.
+- Fournir des tests automatisés permettant de vérifier les principaux parcours et règles d’accès.
+
+## Fonctionnalités disponibles
+
+### Recherche d’offres
+
+Le catalogue de démonstration propose huit offres associées à Casablanca, Rabat, Tanger, Marrakech, Agadir, Fès et au télétravail. La recherche peut combiner :
+
+- un mot-clé portant sur le métier, l’entreprise, la description ou les compétences ;
+- une ville ;
+- un type de contrat : CDI, CDD, stage ou freelance.
+
+Les résultats présentent le titre, l’entreprise, le lieu, le contrat, une description et une rémunération indicative lorsqu’elle est fournie.
+
+### Comptes et authentification
+
+- Inscription avec nom, adresse e-mail et mot de passe.
+- Validation du format de l’adresse e-mail et d’une longueur minimale de huit caractères pour le mot de passe.
+- Refus des adresses déjà inscrites.
+- Connexion, déconnexion et vérification de la session en cours.
+- Stockage des mots de passe sous forme de hachages ; le mot de passe en clair n’est pas écrit dans le fichier JSON.
+- Attribution automatique du rôle `candidate` lors de l’inscription. Un utilisateur ne peut pas obtenir un rôle privilégié en ajoutant un champ au formulaire d’inscription.
+
+### Candidatures et espaces par rôle
+
+Les pages sont séparées afin que les candidatures ne soient pas affichées sur la page d’accueil :
+
+| Rôle | Espace | Accès aux candidatures |
+| --- | --- | --- |
+| `candidate` | `/mes-candidatures` | Consulte uniquement ses propres candidatures et peut postuler aux offres. |
+| `recruiter` | `/espace` | Consulte les candidatures reçues. Ne peut pas envoyer de candidature comme candidat. |
+| `admin` | `/espace` | Consulte les candidatures reçues dans l’espace administrateur. |
+
+Les liens vers ces espaces s’affichent après connexion et selon le rôle. Les pages et les API contrôlent également le rôle côté serveur : masquer un lien dans le navigateur ne constitue pas le contrôle d’accès.
+
+### Ce qui n’est pas encore inclus
+
+Cette version ne propose pas encore de gestion graphique des comptes et des rôles, de création/modification d’offres, de changement de statut des candidatures, de notifications, de dépôt de CV ni de déploiement en production. L’espace administrateur sert actuellement à consulter les candidatures, pas à administrer tous les éléments de la plateforme.
+
+## Rôles et création d’un compte administrateur de démonstration
+
+Pour des raisons de sécurité, l’inscription publique ne permet de créer que des comptes candidats. Il n’existe pas de compte administrateur ni de mot de passe administrateur prédéfini.
+
+Pour tester l’espace administrateur localement :
+
+1. Démarrez l’application et inscrivez un compte depuis le formulaire.
+2. Arrêtez le serveur.
+3. Ouvrez `data\users.json` dans un éditeur local et changez le champ `"role"` du compte souhaité de `"candidate"` à `"admin"`. Ne modifiez pas `password_hash`.
+4. Redémarrez l’application et reconnectez-vous avec ce compte. Le lien **Espace admin** ouvre `/espace`.
+
+Pour créer un recruteur de démonstration, la même procédure s’applique avec le rôle `"recruiter"`. Ne modifiez les rôles que dans un environnement local de confiance. La modification manuelle des fichiers JSON est une procédure de démonstration, pas un mécanisme d’administration adapté à une mise en production.
+
+## Architecture et données
+
+- **Serveur :** Python et Flask (`app.py`).
+- **Interface :** modèles HTML/Jinja dans `templates\`, JavaScript et styles dans `static\`.
+- **Persistance de démonstration :** `data\users.json` pour les comptes et `data\applications.json` pour les candidatures.
+- **Stockage des sessions :** session Flask protégée par la clé configurée dans `SECRET_KEY`.
+- **Tests :** tests unitaires Python dans `tests\test_app.py` et tests d’API HTTP Robot Framework dans `tests\robot\job_search.robot`.
+
+Le dossier `data\` et ses fichiers sont créés au premier enregistrement. Ils sont ignorés par Git afin de ne pas versionner les comptes ou les candidatures. La variable d’environnement `DATA_DIR` permet de choisir un autre dossier de données.
+
+Les fichiers JSON sont prévus pour une démonstration locale avec une seule instance. Ils ne conviennent pas comme stockage de production ou pour plusieurs instances concurrentes. Pour un déploiement réel, il faudra notamment les remplacer par une base de données, définir une clé secrète privée et persistante, utiliser HTTPS avec `COOKIE_SECURE=true`, protéger les données personnelles et prévoir les procédures de sauvegarde et de contrôle d’accès adaptées.
+
+## Installation et lancement local
+
+Depuis la racine du dépôt, dans PowerShell :
 
 ```powershell
 python -m venv .venv
@@ -13,54 +89,56 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-Ouvrez ensuite <http://127.0.0.1:5000>.
+Ouvrez ensuite <http://127.0.0.1:5000>. Pour arrêter le serveur, utilisez `Ctrl+C` dans la fenêtre PowerShell où il tourne.
 
-## Authentification
+Le serveur Flask intégré est destiné au développement et à la démonstration locale, pas à l’hébergement en production.
 
-L’interface propose l’inscription, la connexion et la déconnexion. Une adresse e-mail ne peut être inscrite qu’une fois et le mot de passe doit comporter au moins 8 caractères. Les mots de passe sont stockés sous forme hachée dans `data\users.json`; les candidatures sont enregistrées dans `data\applications.json`. Ces fichiers sont créés au premier enregistrement, conservés après redémarrage et exclus de Git. Les nouvelles inscriptions reçoivent toujours le rôle `candidate` : le rôle envoyé par le navigateur n’est jamais accepté.
+## Vérification et tests
 
-Les rôles disponibles sont `candidate`, `recruiter` et `admin`. Après connexion, l’espace du compte est disponible sur une page dédiée : `/espace` pour les administrateurs et recruteurs, `/mes-candidatures` pour les candidats. Les listes de candidatures ne s’affichent donc pas sur la page d’accueil. Les administrateurs et recruteurs voient toutes les candidatures reçues; chaque candidat ne voit que les siennes. Pour promouvoir un compte dans cette version de démonstration, modifiez son champ `role` dans `data\users.json` depuis un environnement de confiance (par exemple, `candidate` vers `admin`). Les recruteurs et administrateurs peuvent consulter toutes les candidatures avec `GET /api/management/applications`; les candidats ne peuvent consulter que leurs propres candidatures avec `GET /api/applications` et sont les seuls à pouvoir en envoyer.
-
-Les fichiers JSON conviennent à une démonstration locale mono-instance, mais ne remplacent pas une base de données pour un déploiement multi-processus ou une plateforme de production. Pour un déploiement réel, configurez une valeur secrète persistante et privée dans `SECRET_KEY`, activez `COOKIE_SECURE=true` derrière HTTPS, protégez les fichiers de données et migrez le stockage vers une base de données. Le secret fourni par défaut est réservé au développement. `DATA_DIR` permet de choisir un autre dossier de stockage.
-
-## Vérifications
-
-Les tests unitaires couvrent la persistance JSON, le hachage des mots de passe et les permissions par rôle :
+### Tests unitaires
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-## Tests Robot Framework
+Ils couvrent notamment le hachage du mot de passe, la persistance JSON, la séparation des candidatures par utilisateur et les permissions des rôles.
 
-Les tests lancent automatiquement une instance sur le port 5001, réalisent des requêtes HTTP, puis arrêtent le serveur.
+### Tests Robot Framework
 
 ```powershell
 python -m robot --outputdir results tests/robot
 ```
 
-Le rapport lisible se trouve dans `results\report.html` et le détail des étapes dans `results\log.html`. Pour exécuter un seul scénario :
+La suite démarre une instance de test sur le port 5001, utilise un dossier temporaire pour les données, puis arrête le serveur. Elle vérifie les routes HTTP, la recherche, l’authentification, les candidatures, les rôles et les pages séparées. Elle contrôle l’API et le balisage HTML ; elle ne simule pas les interactions dans un vrai navigateur.
 
-```powershell
-python -m robot --test "Une connexion valide puis une déconnexion fonctionnent" --outputdir results tests/robot
+Les rapports Robot sont générés dans `results\report.html`, `results\log.html` et `results\output.xml`.
+
+## Routes principales
+
+| Méthode | Route | Description | Accès |
+| --- | --- | --- | --- |
+| `GET` | `/` | Page d’accueil et catalogue d’offres. | Public |
+| `GET` | `/api/jobs?q=...&location=...&contract=...` | Recherche les offres selon les filtres fournis. | Public |
+| `POST` | `/api/auth/register` | Crée un compte candidat et ouvre une session. | Public |
+| `POST` | `/api/auth/login` | Authentifie un compte existant. | Public |
+| `GET` | `/api/auth/me` | Renvoie le profil de la session active. | Connecté |
+| `POST` | `/api/auth/logout` | Ferme la session active. | Connecté |
+| `GET` | `/mes-candidatures` | Page des candidatures personnelles. | `candidate` |
+| `GET` | `/espace` | Page de suivi des candidatures reçues. | `recruiter`, `admin` |
+| `GET` | `/api/applications` | Liste les candidatures de l’utilisateur connecté. | `candidate` |
+| `POST` | `/api/applications` | Envoie une candidature pour une offre existante. | `candidate` |
+| `GET` | `/api/management/applications` | Liste les candidatures reçues. | `recruiter`, `admin` |
+| `GET` | `/health` | Vérifie que le serveur répond. | Public |
+
+## Organisation des principaux fichiers
+
+```text
+app.py                         Routes Flask, authentification, rôles et stockage JSON
+templates\index.html           Page d’accueil et recherche d’offres
+templates\applications.html   Modèle commun des espaces de candidatures
+static\app.js                  Interactions de la page d’accueil
+static\applications.js         Chargement et affichage des candidatures
+static\style.css               Style responsive et thème marocain
+tests\test_app.py              Tests unitaires
+tests\robot\job_search.robot   Tests HTTP Robot Framework
 ```
-
-Robot Framework lit les scénarios dans `tests/robot/job_search.robot`. `RequestsLibrary` appelle l’API ; les mots-clés Robot vérifient les statuts HTTP et les données renvoyées. Les scénarios couvrent la recherche d’offres au Maroc, l’inscription et ses erreurs, la protection des rôles, la connexion, la déconnexion et les candidatures. Ils vérifient aussi que la page d’accueil ne mélange pas les espaces de candidatures. Chaque exécution utilise un dossier de données temporaire. Ces tests vérifient l’API HTTP et le balisage de la page : ils ne simulent pas les clics d’un navigateur.
-
-## Routes API principales
-
-| Méthode et route | Fonction |
-| --- | --- |
-| `GET /` | Affiche l’application. |
-| `GET /api/jobs?q=...&location=...&contract=...` | Recherche des offres au Maroc. |
-| `POST /api/auth/register` | Crée un compte et ouvre une session. |
-| `POST /api/auth/login` | Connecte un compte existant. |
-| `GET /api/auth/me` | Renvoie le profil de la session connectée. |
-| `POST /api/auth/logout` | Ferme la session. |
-| `GET /espace` | Page dédiée aux rôles `admin` et `recruiter`. |
-| `GET /mes-candidatures` | Page dédiée aux candidatures du compte `candidate`. |
-| `GET /api/applications` | Renvoie les candidatures de la personne connectée. |
-| `POST /api/applications` | Enregistre une candidature pour un compte candidat connecté. |
-| `GET /api/management/applications` | Liste les candidatures (rôles `recruiter` et `admin`). |
-| `GET /health` | Vérifie que le serveur répond. |
-# jobs-robot_Framework
