@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{{ description }}">
+    <title>{{ title }} — MiniJob Maroc</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='applications.js') }}" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="MiniJob, accueil">
+        <span class="brand-mark" aria-hidden="true">m</span>
+        <span>minijob<span class="brand-dot">.</span></span>
+      </a>
+      <nav class="header-actions" aria-label="Navigation principale">
+        <a class="header-link" href="/#offres">Explorer les offres <span aria-hidden="true">↗</span></a>
+        <span class="user-status">{{ user.name }} · {{ "Admin" if user.role == "admin" else "Recruteur·euse" if is_staff else "Candidat·e" }}</span>
+        {% if is_staff %}
+          <a class="auth-toggle workspace-link" href="/espace">{{ "Espace admin" if user.role == "admin" else "Espace recruteur" }}</a>
+        {% else %}
+          <a class="auth-toggle workspace-link" href="/mes-candidatures">Mes candidatures</a>
+        {% endif %}
+        <button class="auth-toggle" id="logout-button" type="button">Se déconnecter</button>
+      </nav>
+    </header>
+
+    <main>
+      <section
+        class="workspace-panel workspace-page"
+        id="applications-workspace"
+        data-applications-endpoint="{{ applications_endpoint }}"
+        data-is-staff="{{ 'true' if is_staff else 'false' }}"
+        aria-labelledby="workspace-title"
+      >
+        <div class="workspace-heading">
+          <div>
+            <p class="eyebrow">TABLEAU DE BORD</p>
+            <h1 id="workspace-title">{{ title }}<span class="brand-dot">.</span></h1>
+            <p>{{ description }}</p>
+          </div>
+          <button class="apply-button" id="refresh-applications" type="button">Actualiser</button>
+        </div>
+        <p class="workspace-count" id="applications-count" aria-live="polite">Chargement des candidatures…</p>
+        <div class="application-list" id="application-list" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand footer-brand" href="/"><span class="brand-mark" aria-hidden="true">m</span><span>minijob<span class="brand-dot">.</span></span></a>
+      <p>Un emploi qui vous ressemble. © 2025 MiniJob</p>
+      <a class="footer-top" href="/">Retour aux offres ↑</a>
+    </footer>
+  </body>
+</html>

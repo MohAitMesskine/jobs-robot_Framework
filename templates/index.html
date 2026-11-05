@@ -20,6 +20,8 @@
       <nav class="header-actions" aria-label="Navigation principale">
         <a class="header-link" href="#offres">Explorer les offres <span aria-hidden="true">↗</span></a>
         <span class="user-status" id="user-status" hidden></span>
+        <a class="auth-toggle workspace-link" id="staff-workspace-link" href="/espace" hidden>Espace admin</a>
+        <a class="auth-toggle workspace-link" id="candidate-workspace-link" href="/mes-candidatures" hidden>Mes candidatures</a>
         <button class="auth-toggle" id="auth-toggle" type="button">Se connecter</button>
         <button class="auth-toggle" id="logout-button" type="button" hidden>Se déconnecter</button>
       </nav>
@@ -98,7 +100,7 @@
           <div class="application-intro">
             <p class="eyebrow">VOTRE ESPACE CANDIDAT</p>
             <h2 id="auth-title">Bienvenue chez MiniJob<span class="brand-dot">.</span></h2>
-            <p>Créez un compte ou connectez-vous pour envoyer une candidature. Votre mot de passe est stocké sous forme hachée.</p>
+            <p>Créez un compte candidat ou connectez-vous pour postuler. Les rôles recruteur et administrateur sont attribués de façon sécurisée.</p>
             <p class="form-feedback" id="auth-feedback" role="status"></p>
           </div>
           <div class="auth-forms">

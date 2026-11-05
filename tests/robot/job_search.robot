@@ -3,6 +3,7 @@ Documentation     Tests fonctionnels HTTP de MiniJob Maroc et de son authentific
 Library           RequestsLibrary
 Library           Process
 Library           Collections
+Library           OperatingSystem
 Suite Setup       Start Test Server
 Suite Teardown    Stop Test Server
 
@@ -18,6 +19,9 @@ La page d'accueil expose la recherche et les formulaires de compte
     Should Contain    ${response.text}    search-form
     Should Contain    ${response.text}    login-form
     Should Contain    ${response.text}    register-form
+    Should Contain    ${response.text}    id="staff-workspace-link"
+    Should Contain    ${response.text}    id="candidate-workspace-link"
+    Should Not Contain    ${response.text}    Retrouver les candidatures envoyées depuis votre compte
 
 Le serveur répond au contrôle de santé
     ${response}=    GET On Session    minijob    /health
@@ -81,6 +85,8 @@ Une inscription valide crée un compte et ouvre une session
     ${data}=    Evaluate    $response.json()
     ${user}=    Get From Dictionary    ${data}    user
     Dictionary Should Contain Item    ${user}    email    sara.test@example.com
+    Dictionary Should Contain Item    ${user}    role    candidate
+    File Should Exist    ${TEST_DATA_DIR}${/}users.json
 
 Une inscription avec une adresse invalide est refusée
     Create Session    invalid-email    ${BASE_URL}
@@ -88,6 +94,29 @@ Une inscription avec une adresse invalide est refusée
     ${response}=    POST On Session    invalid-email    /api/auth/register    json=${payload}    expected_status=400
     ${data}=    Evaluate    $response.json()
     Dictionary Should Contain Item    ${data}    error    L’adresse e-mail n’est pas valide.
+
+Un candidat ne peut pas s’attribuer le rôle administrateur
+    Create Session    protected-role    ${BASE_URL}
+    ${payload}=    Create Dictionary    name=Sara Candidate    email=role.test@example.com    password=Password123!    role=admin
+    ${response}=    POST On Session    protected-role    /api/auth/register    json=${payload}    expected_status=201
+    ${data}=    Evaluate    $response.json()
+    ${user}=    Get From Dictionary    ${data}    user
+    Dictionary Should Contain Item    ${user}    role    candidate
+    ${response}=    GET On Session    protected-role    /api/applications
+    Should Be Equal As Integers    ${response.status_code}    200
+    ${response}=    GET On Session    protected-role    /api/management/applications    expected_status=403
+    ${data}=    Evaluate    $response.json()
+    Dictionary Should Contain Item    ${data}    error    Rôle insuffisant.
+
+L’espace candidat est séparé et protégé par rôle
+    Create Session    candidate-workspace    ${BASE_URL}
+    ${payload}=    Create Dictionary    name=Sara Candidate    email=workspace.test@example.com    password=Password123!
+    ${response}=    POST On Session    candidate-workspace    /api/auth/register    json=${payload}    expected_status=201
+    ${response}=    GET On Session    candidate-workspace    /mes-candidatures
+    Should Be Equal As Integers    ${response.status_code}    200
+    Should Contain    ${response.text}    Mes candidatures
+    Should Contain    ${response.text}    Retrouvez les candidatures envoyées depuis votre compte.
+    ${response}=    GET On Session    candidate-workspace    /espace    expected_status=403
 
 Une inscription avec un mot de passe trop court est refusée
     Create Session    short-password    ${BASE_URL}
@@ -168,7 +197,9 @@ Une candidature pour une offre inexistante est refusée
 
 *** Keywords ***
 Start Test Server
-    Start Process    python    app.py    alias=${SERVER_ALIAS}    env:PORT=5001
+    ${test_data_dir}=    Evaluate    __import__('tempfile').mkdtemp(prefix='minijob-robot-')
+    Set Suite Variable    ${TEST_DATA_DIR}    ${test_data_dir}
+    Start Process    python    app.py    alias=${SERVER_ALIAS}    env:PORT=5001    env:DATA_DIR=${TEST_DATA_DIR}
     Create Session    minijob    ${BASE_URL}
     Wait Until Keyword Succeeds    15x    1s    Server Should Be Ready
 
@@ -178,3 +209,4 @@ Server Should Be Ready
 
 Stop Test Server
     Terminate Process    ${SERVER_ALIAS}    kill=True
+    Remove Directory    ${TEST_DATA_DIR}    recursive=True

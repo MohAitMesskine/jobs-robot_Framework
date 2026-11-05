@@ -8,6 +8,8 @@ const authPanel = document.querySelector("#auth-panel");
 const authFeedback = document.querySelector("#auth-feedback");
 const authToggle = document.querySelector("#auth-toggle");
 const logoutButton = document.querySelector("#logout-button");
+const staffWorkspaceLink = document.querySelector("#staff-workspace-link");
+const candidateWorkspaceLink = document.querySelector("#candidate-workspace-link");
 let currentUser = null;
 let selectedJob = null;
 
@@ -82,9 +84,16 @@ function selectJob(job) {
 function updateAuthControls() {
   const userStatus = document.querySelector("#user-status");
   userStatus.hidden = !currentUser;
-  userStatus.textContent = currentUser ? `Bonjour, ${currentUser.name}` : "";
+  const roleNames = { candidate: "Candidat·e", recruiter: "Recruteur·euse", admin: "Admin" };
+  userStatus.textContent = currentUser
+    ? `Bonjour, ${currentUser.name} · ${roleNames[currentUser.role] || currentUser.role}`
+    : "";
   authToggle.hidden = Boolean(currentUser);
   logoutButton.hidden = !currentUser;
+  staffWorkspaceLink.hidden = !currentUser || !["admin", "recruiter"].includes(currentUser.role);
+  candidateWorkspaceLink.hidden = !currentUser || currentUser.role !== "candidate";
+  if (currentUser?.role === "admin") staffWorkspaceLink.textContent = "Espace admin";
+  if (currentUser?.role === "recruiter") staffWorkspaceLink.textContent = "Espace recruteur";
 }
 
 async function submitAuthForm(event, endpoint) {
