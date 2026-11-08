@@ -1,117 +1,177 @@
-# MiniJob Maroc
+# MyJobs Maroc — Projet d'Automatisation de Tests (Robot Framework)
 
-## Présentation du projet
+## 🎯 Objectif du Projet
 
-**MiniJob Maroc** est une application web destinée à faciliter la recherche d’emploi au Maroc et la gestion des candidatures. Elle met en relation des candidats qui consultent des offres et postulent en ligne avec des équipes de recrutement et des administrateurs.
+Ce projet a pour objectif principal la mise en place d'une **stratégie complète d'automatisation des tests logiciels** avec **Robot Framework** pour une plateforme web de recrutement et de recherche d'emploi au Maroc (**MyJobs Maroc**), intégrant un moteur de recherche **Elasticsearch**, des rôles multiples (Administrateur, Employé, Candidat) et des flux de candidatures en ligne.
 
-Le projet intègre :
-- La recherche avancée d'offres via un moteur **Elasticsearch** (avec bascule automatique en recherche locale si Elasticsearch est hors ligne).
-- Un **espace administrateur** préconfiguré avec publication d'offres d'emploi, suivi des candidatures et gestion de l'index Elasticsearch.
-- Un **espace candidat** complet avec suivi des candidatures et possibilité de retrait.
-- Une suite complète de **tests automatisés Robot Framework** (31 tests passants).
-
----
-
-## Comptes de démonstration préconfigurés
-
-| Profil | Email | Mot de passe | Rôle & Permissions |
-| --- | --- | --- | --- |
-| **Administrateur** | `admin@gmail.com` | `admin` | Accès `/espace`, publication et suppression d'offres, examen des candidatures, réindexation Elasticsearch. |
-| **Employé / Recruteur** | `employee@gmail.com` | `employee` | Accès `/espace`, création et publication d'offres d'emploi, suivi des candidatures. |
-| **Candidat** | `aitmeskine.mohamed@gmail.com` | `password` (ou créer un compte via le formulaire) | Accès `/mes-candidatures`, recherche d'offres, postuler et retirer ses candidatures. |
+Le cœur de ce projet repose sur :
+1. **La couverture fonctionnelle et de sécurité automatisée de bout en bout** via des suites de tests Robot Framework.
+2. **L'isolation rigoureuse des environnements de test** (démarrage dynamique de serveurs et répertoires de données temporaires).
+3. **La production et l'exploitation des rapports de tests détaillés** (`report.html`, `log.html`, `output.xml`) pour l'assurance qualité (QA) et l'intégration continue (CI/CD).
 
 ---
 
-## Moteur de Recherche Elasticsearch
-
-L'application intègre le service [`elasticsearch_service.py`](elasticsearch_service.py) :
-- **Index utilisé** : `jobs`
-- **Recherche plein texte** : titre (`title^3`), entreprise (`company^2`), tags/compétences (`tags^2`), description avec tolérance aux fautes (`fuzziness: AUTO`).
-- **Filtres combinés** : filtrage par ville (Casablanca, Rabat, Tanger, etc.) et contrat (CDI, CDD, Stage, Freelance).
-- **Mode Haute Disponibilité** : si le cluster Elasticsearch n'est pas joignable (ex: port 9200 fermé), l'application bascule automatiquement et de manière transparente sur la recherche locale sans erreur.
-- **Synchronisation automatique** : chaque offre publiée par l'administrateur est immédiatement enregistrée et indexée dans Elasticsearch.
-
-### Pour lancer Elasticsearch localement (optionnel avec Docker) :
-```powershell
-docker run -d --name elasticsearch -p 9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-```
-
----
-
-## Architecture et fichiers principaux
+## 📊 Tableau de Bord des Tests (35 Tests / 100% Succès)
 
 ```text
-app.py                                       Routes Flask, authentification, gestion des offres & candidatures
-elasticsearch_service.py                     Client REST Elasticsearch, mapping, indexation et requêtes booléennes
-templates\index.html                         Page d'accueil et recherche d'offres
-templates\applications.html                  Espace administrateur & tableau de bord candidat
-static\app.js                                Logique de la page d'accueil (recherche, formulaire de compte, candidature)
-static\applications.js                       Logique des tableaux de bord (tabs admin, publication, statut ES, candidatures)
-static\style.css                             Styles responsive (thème marocain, métriques, badges, formulaires admin)
-data\jobs.json                               Persistance des offres d'emploi
-data\users.json                              Persistance des comptes utilisateurs
-data\applications.json                       Persistance des candidatures
-tests\test_app.py                            Tests unitaires Python
-tests\robot\job_search.robot                 Tests Robot Framework : parcours recherche et authentification (19 tests)
-tests\robot\admin_and_elasticsearch.robot    Tests Robot Framework : admin, publication d'offres et Elasticsearch (12 tests)
+==============================================================================
+Robot                                                                 | PASS |
+35 tests, 35 passed, 0 failed (100% de réussite)
+==============================================================================
+Suite 1 : tests/robot/job_search.robot                 | 19 tests passés |
+Suite 2 : tests/robot/admin_and_elasticsearch.robot    | 16 tests passés |
+==============================================================================
 ```
 
 ---
 
-## Routes API
+## 🏗️ Architecture et Stratégie d'Automatisation
 
-| Méthode | Route | Description | Accès requis |
-| --- | --- | --- | --- |
-| `GET` | `/` | Page d’accueil et recherche des offres. | Public |
-| `GET` | `/api/jobs?q=...&location=...&contract=...` | Recherche des offres (Elasticsearch ou local). | Public |
-| `POST` | `/api/jobs` | Publie une nouvelle offre d'emploi et l'indexe dans Elasticsearch. | `admin`, `recruiter` |
-| `DELETE` | `/api/jobs/<int:job_id>` | Supprime une offre du catalogue et d'Elasticsearch. | `admin` |
-| `GET` | `/api/es/status` | Indique l'état du moteur Elasticsearch (en ligne / hors ligne). | Public |
-| `POST` | `/api/admin/reindex` | Réindexe toutes les offres dans Elasticsearch. | `admin` |
-| `POST` | `/api/auth/register` | Inscription d'un nouveau candidat. | Public |
-| `POST` | `/api/auth/login` | Connexion à un compte existant. | Public |
-| `GET` | `/api/auth/me` | Profil de l'utilisateur connecté. | Connecté |
-| `POST` | `/api/auth/logout` | Déconnexion. | Connecté |
-| `GET` | `/mes-candidatures` | Dashboard personnel du candidat. | `candidate` |
-| `GET` | `/espace` | Dashboard de l'administrateur / recruteur. | `admin`, `recruiter` |
-| `GET` | `/api/applications` | Liste des candidatures de l'utilisateur. | `candidate`, `admin`, `recruiter` |
-| `POST` | `/api/applications` | Envoie une candidature pour une offre. | `candidate`, `admin` |
-| `DELETE` | `/api/applications/<int:app_id>` | Retire/supprime une candidature. | Propriétaire ou `admin` |
-| `GET` | `/api/management/applications` | Liste toutes les candidatures reçues. | `admin`, `recruiter` |
-| `GET` | `/health` | Contrôle de santé de l'API. | Public |
+### 1. Bibliothèques Robot Framework utilisées
+- **`RequestsLibrary`** : Exécution de requêtes HTTP REST (`GET`, `POST`, `DELETE`), gestion des sessions d'authentification par cookies et validation fine des codes de statut HTTP et des payloads JSON.
+- **`Process`** : Démarrage et arrêt automatisés du serveur d'application en arrière-plan pour chaque suite de tests (`Suite Setup` et `Suite Teardown`).
+- **`Collections`** : Validation stricte des structures de données dictionnaires et listes renvoyées par l'API.
+- **`OperatingSystem`** : Création et purge automatique des dossiers de stockage temporaires.
+
+### 2. Isolation et Herméticité des Tests
+Chaque suite Robot Framework applique le principe d'étanchéité des données :
+- Dans le **`Suite Setup`**, un répertoire de données vierge est généré à la volée via `tempfile.mkdtemp()`.
+- Le serveur Flask est lancé sur un port de test isolé (`5001` ou `5002`) avec la variable `DATA_DIR` pointant sur ce répertoire éphémère.
+- Le mot-clé de synchronisation `Wait Until Keyword Succeeds` s'assure que le serveur répond sur `/health` avant de débuter les tests.
+- Dans le **`Suite Teardown`**, le processus serveur est arrêté (`Terminate Process`) et le répertoire temporaire est détruit sans laisser de traces.
 
 ---
 
-## Lancement local de l'application
+## 🧪 Périmètre des Suites de Tests Automatisés
 
-Dans PowerShell :
+### Suite 1 : `tests/robot/job_search.robot` (19 Tests)
+*Vérification des parcours publics, de l'exposition des interfaces, de la recherche et de la robustesse de l'authentification.*
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python app.py
-```
-
-L'application est disponible sur **<http://127.0.0.1:5000>**.
+- **Contrôle d'exposition IHM & API** :
+  - Exposition de la page d'accueil, du formulaire de recherche, des formulaires de compte et des liens d'espace.
+  - Contrôle de santé de l'API (`GET /health`).
+- **Moteur de recherche & Filtrage** :
+  - Catalogue complet des offres marocaines et rémunérations en MAD.
+  - Filtrage multicritère par ville (Casablanca, Rabat, Tanger, etc.).
+  - Combinaison mot-clé + type de contrat (CDI, CDD, Stage, Freelance).
+  - Gestion des recherches sans correspondance (retour d'une liste vide sans crash).
+- **Sécurité & Authentification des candidats** :
+  - Blocage des candidatures anonymes (`401 Unauthorized`).
+  - Inscription valide avec création de compte et ouverture de session (`201 Created`).
+  - Rejet des adresses email invalides (`400 Bad Request`).
+  - Blocage de l'auto-attribution d'un rôle privilégié lors de l'inscription (protection contre l'élévation de privilèges).
+  - Validation de la longueur minimale du mot de passe (au moins 8 caractères).
+  - Validation de la présence de tous les champs obligatoires.
+  - Rejet des inscriptions en doublon (`409 Conflict`).
+  - Rejet des connexions avec mot de passe erroné (`401 Unauthorized`).
+  - Cycle complet de connexion puis déconnexion avec expiration de session.
+- **Gestion des candidatures candidat** :
+  - Enregistrement de candidature authentifiée avec association automatique du compte.
+  - Rejet de candidature sans message.
+  - Rejet de candidature pour un identifiant d'offre inexistant (`404 Not Found`).
 
 ---
 
-## Exécution des Tests
+### Suite 2 : `tests/robot/admin_and_elasticsearch.robot` (16 Tests)
+*Vérification de l'espace administrateur, du parcours employé, de la publication d'offres et du moteur Elasticsearch.*
 
-### 1. Tests Automatisés Robot Framework (31 tests au total)
+- **Espace Administrateur & Intégration Elasticsearch** :
+  - Connexion du compte administrateur et validation du rôle `admin`.
+  - Contrôle d'accès et présence des formulaires de gestion dans `/espace`.
+  - Contrôle de l'endpoint d'état Elasticsearch (`GET /api/es/status`).
+  - Réindexation manuelle Elasticsearch (`POST /api/admin/reindex`).
+- **Publication et Cycle de Vie des Offres (Administrateur)** :
+  - Publication d'une nouvelle offre d'emploi (`POST /api/jobs`).
+  - Validation de la découvrabilité immédiate de l'offre publiée dans le moteur de recherche (`/api/jobs?q=...`).
+  - Consultation des candidatures reçues dans l'espace de gestion staff.
+  - Suppression définitive d'une offre d'emploi (`DELETE /api/jobs/<id>`) et vérification de son retrait de la recherche.
+- **Publication d'Offres par les Employés** :
+  - Connexion avec un compte employé et accès à son espace dédié.
+  - Création et publication avec succès d'une offre par un employé (`POST /api/jobs`).
+  - Découvrabilité immédiate dans la recherche de l'offre créée par l'employé.
+  - Inscription publique d'un nouvel employé (`role=employee`) et publication directe d'annonces.
+- **Contrôles de Sécurité & Permissions RBAC** :
+  - Interdiction formelle pour un candidat classique de publier une offre (`403 Forbidden`).
+  - Interdiction pour un visiteur non connecté de publier une offre (`401 Unauthorized`).
+  - Possibilité pour le candidat de consulter ses candidatures puis de retirer sa propre candidature (`DELETE /api/applications/<id>`).
+
+---
+
+## 🚀 Exécution des Tests Automatisés
+
+### Exécuter l'ensemble des suites Robot Framework
+Depuis le terminal PowerShell à la racine du projet :
 
 ```powershell
 python -m robot --outputdir results tests/robot/
 ```
 
-Les rapports et journaux interactifs sont générés dans :
-- `results\report.html`
-- `results\log.html`
-- `results\output.xml`
+### Exécuter une suite de test spécifique
+```powershell
+# Exécuter uniquement la suite de recherche et authentification
+python -m robot --outputdir results tests/robot/job_search.robot
 
-### 2. Tests Unitaires Python
+# Exécuter uniquement la suite administration, employés et Elasticsearch
+python -m robot --outputdir results tests/robot/admin_and_elasticsearch.robot
+```
 
+### Exécuter les tests unitaires Python (complémentaires)
 ```powershell
 python -m unittest discover -s tests -v
+```
+
+---
+
+## 📑 Exploitation des Rapports de Test
+
+Après chaque exécution, Robot Framework génère automatiquement trois artefacts d'analyse dans le dossier `results/` :
+
+### 1. `results/report.html` — Le Rapport de Synthèse Interactif
+- **Vue d'ensemble managériale** : diagramme circulaire et barre de statut visuelle indiquant le taux de réussite global (100% PASS).
+- **Statistiques d'exécution** : durée totale, temps d'exécution par suite et par scénario de test.
+- **Détail par scénario** : liste ordonnée de tous les cas de tests avec leur état (`PASS`/`FAIL`) et leurs métadonnées.
+
+### 2. `results/log.html` — Le Journal Technique Détaillé
+- **Traçabilité pas-à-pas** : arborescence dépliable montrant chaque mot-clé exécuté (`Keyword`).
+- **Données d'appels HTTP** : requêtes exactes envoyées, URLs cibles, headers HTTP, payloads JSON transmis, codes de réponse HTTP et corps des réponses JSON.
+- **Diagnostic instantané** : identification immédiate des causes d'erreur en cas d'échec d'une assertion.
+
+### 3. `results/output.xml` — Les Résultats Bruts pour la CI/CD
+- Fichier structuré standard XML permettant l'intégration avec des outils tiers :
+  - Tableaux de bord **Jenkins** (via le plugin Robot Framework).
+  - **GitHub Actions** / **GitLab CI** pour la publication de métriques de test et le blocage automatique des déploiements en cas de régression.
+
+---
+
+## 🛠️ Structure des Fichiers de Test
+
+```text
+projet-robot-framework/
+├── tests/
+│   ├── robot/
+│   │   ├── job_search.robot                 # 19 tests fonctionnels (recherche, auth, candidatures)
+│   │   └── admin_and_elasticsearch.robot    # 16 tests avancés (admin, employés, ES, sécurité)
+│   └── test_app.py                          # 8 tests unitaires Python
+├── results/                                 # Dossier de génération des rapports
+│   ├── report.html                          # Rapport visuel de synthèse
+│   ├── log.html                             # Journal technique détaillé
+│   └── output.xml                           # Rapport XML pour CI/CD
+├── app.py                                   # Application sous test (SUT)
+└── elasticsearch_service.py                 # Module client Elasticsearch sous test
+```
+
+---
+
+## 📋 Prérequis et Installation pour l'Exécution
+
+```powershell
+# 1. Création et activation de l'environnement virtuel
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# 2. Installation des dépendances de test
+python -m pip install -r requirements.txt
+
+# 3. Lancement de la campagne de test
+python -m robot --outputdir results tests/robot/
 ```
