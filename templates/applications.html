@@ -4,24 +4,36 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="{{ description }}">
-    <title>{{ title }} — MiniJob Maroc</title>
+    <title>{{ title }} — MyJobs Maroc</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="{{ url_for('static', filename='applications.js') }}" defer></script>
   </head>
   <body>
+    <!-- Top Moroccan Kingdom Accent Bar -->
+    <div class="morocco-top-bar" aria-hidden="true">
+      <div class="morocco-bar-pattern"></div>
+    </div>
+
     <header class="site-header">
-      <a class="brand" href="/" aria-label="MiniJob, accueil">
-        <span class="brand-mark" aria-hidden="true">m</span>
-        <span>minijob<span class="brand-dot">.</span></span>
+      <a class="brand" href="/" aria-label="MyJobs Maroc, accueil">
+        <span class="brand-flag" aria-hidden="true">
+          <span class="star-icon">★</span>
+        </span>
+        <div class="brand-text-wrap">
+          <span class="brand-title">myjobs<span class="brand-dot">.ma</span></span>
+          <span class="brand-subtitle">ROYAUME DU MAROC</span>
+        </div>
       </a>
       <nav class="header-actions" aria-label="Navigation principale">
-        <a class="header-link" href="/#offres">Explorer les offres <span aria-hidden="true">↗</span></a>
-        <span class="user-status">{{ user.name }} · {{ "Admin" if user.role == "admin" else "Recruteur·euse" if is_staff else "Candidat·e" }}</span>
+        <a class="header-link" href="/#offres">
+          <span class="morocco-pill">🇲🇦 Explorer</span> Offres au Maroc <span aria-hidden="true">↗</span>
+        </a>
+        <span class="user-status">{{ user.name }} · {{ "Administrateur" if user.role == "admin" else ("Employé" if user.role == "employee" else ("Recruteur" if is_staff else "Candidat")) }}</span>
         {% if is_staff %}
-          <a class="auth-toggle workspace-link" href="/espace">{{ "Espace admin" if user.role == "admin" else "Espace recruteur" }}</a>
+          <a class="auth-toggle workspace-link" href="/espace">{{ "Espace admin" if user.role == "admin" else ("Espace employé" if user.role == "employee" else "Espace recruteur") }}</a>
         {% else %}
           <a class="auth-toggle workspace-link" href="/mes-candidatures">Mes candidatures</a>
         {% endif %}
@@ -31,29 +43,154 @@
 
     <main>
       <section
-        class="workspace-panel workspace-page"
+        class="workspace-panel workspace-page morocco-workspace"
         id="applications-workspace"
         data-applications-endpoint="{{ applications_endpoint }}"
         data-is-staff="{{ 'true' if is_staff else 'false' }}"
+        data-user-role="{{ user.role }}"
+        data-user-name="{{ user.name }}"
+        data-user-email="{{ user.email }}"
         aria-labelledby="workspace-title"
       >
         <div class="workspace-heading">
           <div>
-            <p class="eyebrow">TABLEAU DE BORD</p>
+            <p class="eyebrow"><span class="eyebrow-dot"></span> TABLEAU DE BORD · MYJOBS MAROC</p>
             <h1 id="workspace-title">{{ title }}<span class="brand-dot">.</span></h1>
             <p>{{ description }}</p>
           </div>
-          <button class="apply-button" id="refresh-applications" type="button">Actualiser</button>
+          <div class="workspace-actions">
+            <button class="apply-button" id="refresh-applications" type="button">Actualiser</button>
+            <a class="apply-button primary-btn" href="/#offres">Parcourir les offres</a>
+          </div>
         </div>
-        <p class="workspace-count" id="applications-count" aria-live="polite">Chargement des candidatures…</p>
-        <div class="application-list" id="application-list" aria-live="polite"></div>
+
+        <!-- Dashboard User Bar / Metrics -->
+        <div class="dashboard-stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">Utilisateur connecté</span>
+            <span class="stat-value" id="dashboard-user-name">{{ user.name }}</span>
+            <span class="stat-badge role-badge-{{ user.role }}">
+              <span class="badge-star">★</span> {{ "Administrateur Système" if user.role == "admin" else ("Employé / Entreprise" if user.role == "employee" else ("Recruteur Officiel" if is_staff else "Compte Candidat")) }}
+            </span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">{{ "Candidatures reçues" if is_staff else "Candidatures envoyées" }}</span>
+            <span class="stat-value" id="stat-apps-count">0</span>
+            <span class="stat-meta">Mise à jour en temps réel</span>
+          </div>
+          {% if user.role in ["admin", "employee", "recruiter"] %}
+          <div class="stat-card">
+            <span class="stat-label">Moteur Elasticsearch</span>
+            <span class="stat-value es-badge-loading" id="es-status-indicator">Vérification...</span>
+            <button class="small-btn" id="reindex-btn" type="button">Synchroniser / Réindexer</button>
+          </div>
+          {% else %}
+          <div class="stat-card">
+            <span class="stat-label">Statut du compte</span>
+            <span class="stat-value text-green">Actif & Vérifié</span>
+            <span class="stat-meta">Prêt à candidater au Maroc</span>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if is_staff %}
+        <!-- Workspace Navigation Tabs (Admin & Employees) -->
+        <div class="workspace-tabs" role="tablist">
+          <button class="tab-button active" id="tab-applications" type="button" role="tab">Candidatures reçues</button>
+          <button class="tab-button" id="tab-publish-job" type="button" role="tab">Publier une offre d'emploi</button>
+          <button class="tab-button" id="tab-manage-jobs" type="button" role="tab">Gérer les offres en ligne</button>
+        </div>
+
+        <!-- Tab 1: Formulaire de création / publication d'offre -->
+        <section class="admin-panel morocco-card-panel" id="panel-publish-job" hidden>
+          <div class="panel-header">
+            <h2>Publier une nouvelle offre d'emploi au Maroc</h2>
+            <p>Renseignez les détails du poste ci-dessous. L'offre sera enregistrée et automatiquement indexée dans Elasticsearch.</p>
+          </div>
+          <form class="admin-form" id="create-job-form">
+            <div class="form-row">
+              <label for="job-title">Intitulé du poste *
+                <input id="job-title" name="title" type="text" placeholder="ex: Ingénieur DevOps Cloud" required>
+              </label>
+              <label for="job-company">Entreprise *
+                <input id="job-company" name="company" type="text" placeholder="ex: Atlas Cloud Casablanca" required>
+              </label>
+            </div>
+            <div class="form-row">
+              <label for="job-location">Ville / Région du Maroc *
+                <select id="job-location" name="location" required>
+                  <option value="Casablanca">Casablanca</option>
+                  <option value="Rabat">Rabat</option>
+                  <option value="Tanger">Tanger</option>
+                  <option value="Marrakech">Marrakech</option>
+                  <option value="Agadir">Agadir</option>
+                  <option value="Fès">Fès</option>
+                  <option value="Télétravail">Télétravail</option>
+                </select>
+              </label>
+              <label for="job-contract">Type de contrat *
+                <select id="job-contract" name="contract" required>
+                  <option value="CDI">CDI</option>
+                  <option value="CDD">CDD</option>
+                  <option value="Stage">Stage</option>
+                  <option value="Freelance">Freelance</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-row">
+              <label for="job-salary">Rémunération indicative (MAD)
+                <input id="job-salary" name="salary" type="text" placeholder="ex: 18 000–26 000 MAD / mois">
+              </label>
+              <label for="job-tags">Compétences / Mots-clés (séparés par des virgules)
+                <input id="job-tags" name="tags" type="text" placeholder="ex: Python, Docker, Kubernetes, CI/CD">
+              </label>
+            </div>
+            <label for="job-description">Description du poste & Missions *
+              <textarea id="job-description" name="description" rows="4" placeholder="Détaillez les missions clés, le profil recherché et l'environnement de travail..." required></textarea>
+            </label>
+            <div class="form-footer">
+              <button class="search-button submit-button morocco-btn" id="submit-job-button" type="submit">Publier l'offre d'emploi <span aria-hidden="true">→</span></button>
+              <p class="form-feedback" id="publish-feedback" role="status"></p>
+            </div>
+          </form>
+        </section>
+
+        <!-- Tab 2: Gestion des offres existantes -->
+        <section class="admin-panel morocco-card-panel" id="panel-manage-jobs" hidden>
+          <div class="panel-header">
+            <h2>Catalogue des offres d'emploi actives</h2>
+            <p>Gérez et supprimez des offres directement du catalogue et de l'index Elasticsearch.</p>
+          </div>
+          <div class="admin-jobs-list" id="admin-jobs-list" aria-live="polite">
+            <p>Chargement des offres...</p>
+          </div>
+        </section>
+        {% endif %}
+
+        <!-- Tab 3 / Section principale : Liste des candidatures -->
+        <section class="applications-container" id="panel-applications">
+          <p class="workspace-count" id="applications-count" aria-live="polite">Chargement des candidatures…</p>
+          <div class="application-list" id="application-list" aria-live="polite"></div>
+        </section>
       </section>
     </main>
 
-    <footer>
-      <a class="brand footer-brand" href="/"><span class="brand-mark" aria-hidden="true">m</span><span>minijob<span class="brand-dot">.</span></span></a>
-      <p>Un emploi qui vous ressemble. © 2025 MiniJob</p>
-      <a class="footer-top" href="/">Retour aux offres ↑</a>
+    <!-- Moroccan Styled Footer -->
+    <footer class="moroccan-footer">
+      <div class="footer-content">
+        <a class="brand footer-brand" href="/">
+          <span class="brand-flag" aria-hidden="true"><span class="star-icon">★</span></span>
+          <div class="brand-text-wrap">
+            <span class="brand-title">myjobs<span class="brand-dot">.ma</span></span>
+            <span class="brand-subtitle">ROYAUME DU MAROC</span>
+          </div>
+        </a>
+        <p class="footer-slogan">
+          <strong>MyJobs Maroc</strong> (MiniJob Maroc) — Plateforme pour l'emploi et le recrutement au Maroc 🇲🇦.<br>
+          © 2026 MyJobs Maroc. Tous droits réservés.
+        </p>
+        <a class="footer-top" href="/">Retour aux offres ↑</a>
+      </div>
     </footer>
   </body>
 </html>

@@ -8,6 +8,8 @@ from threading import RLock
 from flask import Flask, abort, jsonify, redirect, render_template, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import elasticsearch_service
+
 app = Flask(__name__)
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY", "local-development-key-change-before-deploy"),
@@ -17,7 +19,7 @@ app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "").casefold() == "true",
 )
 
-JOBS = [
+DEFAULT_JOBS = [
     {
         "id": 1,
         "title": "Développeur Python",
@@ -100,6 +102,22 @@ JOBS = [
     },
 ]
 
+JOBS = DEFAULT_JOBS
+
+DEFAULT_ADMIN = {
+    "name": "Administrateur",
+    "email": "admin@gmail.com",
+    "password_hash": generate_password_hash("admin"),
+    "role": "admin",
+}
+
+DEFAULT_EMPLOYEE = {
+    "name": "Karim Employé",
+    "email": "employee@gmail.com",
+    "password_hash": generate_password_hash("employee"),
+    "role": "employee",
+}
+
 DATA_LOCK = RLock()
 
 
@@ -134,6 +152,17 @@ def save_records(filename, records):
             temporary_path.unlink()
 
 
+def get_jobs():
+    with DATA_LOCK:
+        try:
+            records = load_records("jobs.json")
+            if records:
+                return records
+        except Exception:
+            pass
+        return list(DEFAULT_JOBS)
+
+
 def public_user(user):
     return {"name": user["name"], "email": user["email"], "role": user["role"]}
 
@@ -150,7 +179,14 @@ def authenticated_user():
     if not email:
         return None
     with DATA_LOCK:
-        return next((user for user in load_records("users.json") if user["email"] == email), None)
+        users = load_records("users.json")
+        user = next((item for item in users if item.get("email") == email), None)
+        if user is None:
+            if email == DEFAULT_ADMIN["email"]:
+                return DEFAULT_ADMIN
+            if email == DEFAULT_EMPLOYEE["email"]:
+                return DEFAULT_EMPLOYEE
+        return user
 
 
 def has_role(user, *roles):
@@ -167,13 +203,18 @@ def staff_workspace():
     user = authenticated_user()
     if user is None:
         return redirect("/")
-    if not has_role(user, "admin", "recruiter"):
+    if not has_role(user, "admin", "recruiter", "employee"):
         abort(403)
+    role_title = {
+        "admin": "Espace administrateur",
+        "employee": "Espace employé",
+        "recruiter": "Espace recruteur",
+    }.get(user["role"], "Espace collaborateur")
     return render_template(
         "applications.html",
         user=public_user(user),
-        title="Espace administrateur" if user["role"] == "admin" else "Espace recruteur",
-        description="Consultez et suivez les candidatures reçues.",
+        title=role_title,
+        description="Publiez des offres d'emploi et suivez les candidatures reçues.",
         applications_endpoint="/api/management/applications",
         is_staff=True,
     )
@@ -201,26 +242,118 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.get("/api/es/status")
+def es_status():
+    available = elasticsearch_service.is_es_available()
+    return jsonify({
+        "status": "online" if available else "offline",
+        "url": elasticsearch_service.get_es_url(),
+        "index": elasticsearch_service.INDEX_NAME,
+    })
+
+
+@app.post("/api/admin/reindex")
+def admin_reindex():
+    user = authenticated_user()
+    if user is None or not has_role(user, "admin"):
+        return jsonify({"error": "Action réservée aux administrateurs."}), 403
+    jobs = get_jobs()
+    success = elasticsearch_service.bulk_index_jobs(jobs)
+    return jsonify({
+        "success": success,
+        "message": "Indexation Elasticsearch réussie." if success else "Elasticsearch non joignable.",
+        "count": len(jobs),
+    })
+
+
 @app.get("/api/jobs")
 def search_jobs():
-    query = request.args.get("q", "").strip().casefold()
-    location = request.args.get("location", "").strip().casefold()
-    contract = request.args.get("contract", "").strip().casefold()
+    query = request.args.get("q", "").strip()
+    location = request.args.get("location", "").strip()
+    contract = request.args.get("contract", "").strip()
 
-    matches = []
-    for job in JOBS:
-        searchable_text = " ".join(
-            [job["title"], job["company"], job["description"], *job["tags"]]
-        ).casefold()
-        if query and query not in searchable_text:
-            continue
-        if location and location not in job["location"].casefold():
-            continue
-        if contract and contract != job["contract"].casefold():
-            continue
-        matches.append(job)
+    jobs = get_jobs()
+    es_hits, es_ok = elasticsearch_service.search_jobs_es(query=query, location=location, contract=contract)
+    if es_ok:
+        return jsonify({"jobs": es_hits, "source": "elasticsearch", "total": len(es_hits)})
 
-    return jsonify({"jobs": matches})
+    matches = elasticsearch_service.local_search_jobs(jobs, query=query, location=location, contract=contract)
+    return jsonify({"jobs": matches, "source": "local", "total": len(matches)})
+
+
+@app.post("/api/jobs")
+def create_job():
+    user = authenticated_user()
+    if user is None:
+        return jsonify({"error": "Authentification requise."}), 401
+    if not has_role(user, "admin", "recruiter", "employee"):
+        return jsonify({"error": "Action réservée aux administrateurs."}), 403
+
+    data = request_data()
+    if data is None:
+        return jsonify({"error": "Le formulaire doit contenir des données JSON."}), 400
+
+    title = data.get("title", "").strip() if isinstance(data.get("title"), str) else ""
+    company = data.get("company", "").strip() if isinstance(data.get("company"), str) else ""
+    location = data.get("location", "").strip() if isinstance(data.get("location"), str) else ""
+    contract = data.get("contract", "").strip() if isinstance(data.get("contract"), str) else ""
+    salary = data.get("salary", "").strip() if isinstance(data.get("salary"), str) else ""
+    description = data.get("description", "").strip() if isinstance(data.get("description"), str) else ""
+    raw_tags = data.get("tags", [])
+
+    if not title or not company or not location or not contract:
+        return jsonify({"error": "Le titre, l’entreprise, la ville et le type de contrat sont obligatoires."}), 400
+
+    if isinstance(raw_tags, str):
+        tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
+    elif isinstance(raw_tags, list):
+        tags = [str(t).strip() for t in raw_tags if str(t).strip()]
+    else:
+        tags = []
+
+    if not tags:
+        tags = [contract, location]
+
+    with DATA_LOCK:
+        jobs = get_jobs()
+        new_id = max((item.get("id", 0) for item in jobs), default=0) + 1
+        new_job = {
+            "id": new_id,
+            "title": title,
+            "company": company,
+            "location": location,
+            "contract": contract,
+            "salary": salary or "À négocier",
+            "description": description or f"Opportunité chez {company} à {location}.",
+            "tags": tags,
+            "created_by": user.get("email"),
+        }
+        jobs.append(new_job)
+        save_records("jobs.json", jobs)
+
+    elasticsearch_service.index_job(new_job)
+
+    return jsonify({"message": "Offre créée avec succès.", "job": new_job}), 201
+
+
+@app.delete("/api/jobs/<int:job_id>")
+def delete_job(job_id):
+    user = authenticated_user()
+    if user is None:
+        return jsonify({"error": "Authentification requise."}), 401
+    if not has_role(user, "admin", "recruiter", "employee"):
+        return jsonify({"error": "Action réservée aux administrateurs."}), 403
+
+    with DATA_LOCK:
+        jobs = get_jobs()
+        existing = next((item for item in jobs if item.get("id") == job_id), None)
+        if existing is None:
+            return jsonify({"error": "Offre introuvable."}), 404
+        jobs = [item for item in jobs if item.get("id") != job_id]
+        save_records("jobs.json", jobs)
+
+    elasticsearch_service.delete_job_from_es(job_id)
+    return jsonify({"message": "Offre supprimée avec succès."}), 200
 
 
 @app.post("/api/auth/register")
@@ -232,6 +365,8 @@ def register():
     name = data.get("name", "").strip() if isinstance(data.get("name"), str) else ""
     email = data.get("email", "").strip().casefold() if isinstance(data.get("email"), str) else ""
     password = data.get("password", "") if isinstance(data.get("password"), str) else ""
+    submitted_role = data.get("role", "candidate") if isinstance(data.get("role"), str) else "candidate"
+    role = "employee" if submitted_role == "employee" else "candidate"
 
     if not name or not email or not password:
         return jsonify({"error": "Tous les champs sont obligatoires."}), 400
@@ -247,7 +382,7 @@ def register():
             "name": name,
             "email": email,
             "password_hash": generate_password_hash(password),
-            "role": "candidate",
+            "role": role,
         }
         users.append(user)
         save_records("users.json", users)
@@ -267,10 +402,22 @@ def login():
 
     session.clear()
     with DATA_LOCK:
-        user = next((item for item in load_records("users.json") if item["email"] == email), None)
+        users = load_records("users.json")
+        user = next((item for item in users if item["email"] == email), None)
+        if user is None:
+            if email == DEFAULT_ADMIN["email"]:
+                user = DEFAULT_ADMIN
+            elif email == DEFAULT_EMPLOYEE["email"]:
+                user = DEFAULT_EMPLOYEE
+
     if user is None or not check_password_hash(user["password_hash"], password):
         return jsonify({"error": "Adresse e-mail ou mot de passe incorrect."}), 401
 
+    session["user_email"] = email
+    return jsonify({"message": "Connexion réussie.", "user": public_user(user)})
+
+    if user is None or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "Adresse e-mail ou mot de passe incorrect."}), 401
 
     session["user_email"] = email
     return jsonify({"message": "Connexion réussie.", "user": public_user(user)})
@@ -314,7 +461,7 @@ def applications():
                 ]
         return jsonify({"applications": records})
 
-    if not has_role(user, "candidate"):
+    if not has_role(user, "candidate", "admin"):
         return jsonify({"error": "Seuls les candidats peuvent postuler."}), 403
 
     data = request_data()
@@ -333,7 +480,8 @@ def applications():
     if not message or not isinstance(job_id, int) or isinstance(job_id, bool):
         return jsonify({"error": "L’offre et le message sont obligatoires."}), 400
 
-    job = next((item for item in JOBS if item["id"] == job_id), None)
+    jobs = get_jobs()
+    job = next((item for item in jobs if item["id"] == job_id), None)
     if job is None:
         return jsonify({"error": "Cette offre n’existe pas."}), 404
 
@@ -352,12 +500,33 @@ def applications():
     return jsonify({"message": "Candidature envoyée.", "application": application}), 201
 
 
+@app.delete("/api/applications/<int:app_id>")
+def delete_application(app_id):
+    user = authenticated_user()
+    if user is None:
+        return jsonify({"error": "Authentification requise."}), 401
+
+    with DATA_LOCK:
+        records = load_records("applications.json")
+        target = next((item for item in records if item.get("id") == app_id), None)
+        if target is None:
+            return jsonify({"error": "Candidature introuvable."}), 404
+
+        if not has_role(user, "admin") and target.get("email") != user["email"]:
+            return jsonify({"error": "Action non autorisée."}), 403
+
+        records = [item for item in records if item.get("id") != app_id]
+        save_records("applications.json", records)
+
+    return jsonify({"message": "Candidature supprimée avec succès."})
+
+
 @app.get("/api/management/applications")
 def management_applications():
     user = authenticated_user()
     if user is None:
         return jsonify({"error": "Authentification requise."}), 401
-    if not has_role(user, "admin", "recruiter"):
+    if not has_role(user, "admin", "recruiter", "employee"):
         return jsonify({"error": "Rôle insuffisant."}), 403
     with DATA_LOCK:
         records = load_records("applications.json")

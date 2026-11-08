@@ -2,85 +2,89 @@
 
 ## Présentation du projet
 
-**MiniJob Maroc** est une application web de démonstration destinée à faciliter la recherche d’emploi au Maroc et la gestion des candidatures. Elle met en relation des candidats qui consultent des offres et postulent en ligne avec des équipes de recrutement qui examinent les candidatures reçues.
+**MiniJob Maroc** est une application web destinée à faciliter la recherche d’emploi au Maroc et la gestion des candidatures. Elle met en relation des candidats qui consultent des offres et postulent en ligne avec des équipes de recrutement et des administrateurs.
 
-Le projet fournit un parcours complet de démonstration : consultation et filtrage des offres, création de compte, connexion, envoi d’une candidature et consultation des candidatures selon le rôle de l’utilisateur. L’interface est en français et reprend les couleurs rouge et verte du Maroc.
+Le projet intègre :
+- La recherche avancée d'offres via un moteur **Elasticsearch** (avec bascule automatique en recherche locale si Elasticsearch est hors ligne).
+- Un **espace administrateur** préconfiguré avec publication d'offres d'emploi, suivi des candidatures et gestion de l'index Elasticsearch.
+- Un **espace candidat** complet avec suivi des candidatures et possibilité de retrait.
+- Une suite complète de **tests automatisés Robot Framework** (31 tests passants).
 
-> **Périmètre des données :** les offres et rémunérations affichées sont des exemples de démonstration. Elles ne constituent pas des offres d’emploi réelles ni une garantie de salaire.
+---
 
-## Objectifs
+## Comptes de démonstration préconfigurés
 
-- Présenter un parcours de recherche d’emploi simple, lisible et utilisable sur ordinateur et mobile.
-- Permettre de rechercher des offres par mot-clé, ville et type de contrat.
-- Protéger les comptes et les candidatures avec une authentification par session.
-- Séparer les espaces candidat et équipe de recrutement et appliquer les permissions côté serveur.
-- Fournir des tests automatisés permettant de vérifier les principaux parcours et règles d’accès.
+| Profil | Email | Mot de passe | Rôle & Permissions |
+| --- | --- | --- | --- |
+| **Administrateur** | `admin@gmail.com` | `admin` | Accès `/espace`, publication et suppression d'offres, examen des candidatures, réindexation Elasticsearch. |
+| **Employé / Recruteur** | `employee@gmail.com` | `employee` | Accès `/espace`, création et publication d'offres d'emploi, suivi des candidatures. |
+| **Candidat** | `aitmeskine.mohamed@gmail.com` | `password` (ou créer un compte via le formulaire) | Accès `/mes-candidatures`, recherche d'offres, postuler et retirer ses candidatures. |
 
-## Fonctionnalités disponibles
+---
 
-### Recherche d’offres
+## Moteur de Recherche Elasticsearch
 
-Le catalogue de démonstration propose huit offres associées à Casablanca, Rabat, Tanger, Marrakech, Agadir, Fès et au télétravail. La recherche peut combiner :
+L'application intègre le service [`elasticsearch_service.py`](elasticsearch_service.py) :
+- **Index utilisé** : `jobs`
+- **Recherche plein texte** : titre (`title^3`), entreprise (`company^2`), tags/compétences (`tags^2`), description avec tolérance aux fautes (`fuzziness: AUTO`).
+- **Filtres combinés** : filtrage par ville (Casablanca, Rabat, Tanger, etc.) et contrat (CDI, CDD, Stage, Freelance).
+- **Mode Haute Disponibilité** : si le cluster Elasticsearch n'est pas joignable (ex: port 9200 fermé), l'application bascule automatiquement et de manière transparente sur la recherche locale sans erreur.
+- **Synchronisation automatique** : chaque offre publiée par l'administrateur est immédiatement enregistrée et indexée dans Elasticsearch.
 
-- un mot-clé portant sur le métier, l’entreprise, la description ou les compétences ;
-- une ville ;
-- un type de contrat : CDI, CDD, stage ou freelance.
+### Pour lancer Elasticsearch localement (optionnel avec Docker) :
+```powershell
+docker run -d --name elasticsearch -p 9200:9200 -e "discovery.type=single-node" -e "xpack.security.enabled=false" docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+```
 
-Les résultats présentent le titre, l’entreprise, le lieu, le contrat, une description et une rémunération indicative lorsqu’elle est fournie.
+---
 
-### Comptes et authentification
+## Architecture et fichiers principaux
 
-- Inscription avec nom, adresse e-mail et mot de passe.
-- Validation du format de l’adresse e-mail et d’une longueur minimale de huit caractères pour le mot de passe.
-- Refus des adresses déjà inscrites.
-- Connexion, déconnexion et vérification de la session en cours.
-- Stockage des mots de passe sous forme de hachages ; le mot de passe en clair n’est pas écrit dans le fichier JSON.
-- Attribution automatique du rôle `candidate` lors de l’inscription. Un utilisateur ne peut pas obtenir un rôle privilégié en ajoutant un champ au formulaire d’inscription.
+```text
+app.py                                       Routes Flask, authentification, gestion des offres & candidatures
+elasticsearch_service.py                     Client REST Elasticsearch, mapping, indexation et requêtes booléennes
+templates\index.html                         Page d'accueil et recherche d'offres
+templates\applications.html                  Espace administrateur & tableau de bord candidat
+static\app.js                                Logique de la page d'accueil (recherche, formulaire de compte, candidature)
+static\applications.js                       Logique des tableaux de bord (tabs admin, publication, statut ES, candidatures)
+static\style.css                             Styles responsive (thème marocain, métriques, badges, formulaires admin)
+data\jobs.json                               Persistance des offres d'emploi
+data\users.json                              Persistance des comptes utilisateurs
+data\applications.json                       Persistance des candidatures
+tests\test_app.py                            Tests unitaires Python
+tests\robot\job_search.robot                 Tests Robot Framework : parcours recherche et authentification (19 tests)
+tests\robot\admin_and_elasticsearch.robot    Tests Robot Framework : admin, publication d'offres et Elasticsearch (12 tests)
+```
 
-### Candidatures et espaces par rôle
+---
 
-Les pages sont séparées afin que les candidatures ne soient pas affichées sur la page d’accueil :
+## Routes API
 
-| Rôle | Espace | Accès aux candidatures |
-| --- | --- | --- |
-| `candidate` | `/mes-candidatures` | Consulte uniquement ses propres candidatures et peut postuler aux offres. |
-| `recruiter` | `/espace` | Consulte les candidatures reçues. Ne peut pas envoyer de candidature comme candidat. |
-| `admin` | `/espace` | Consulte les candidatures reçues dans l’espace administrateur. |
+| Méthode | Route | Description | Accès requis |
+| --- | --- | --- | --- |
+| `GET` | `/` | Page d’accueil et recherche des offres. | Public |
+| `GET` | `/api/jobs?q=...&location=...&contract=...` | Recherche des offres (Elasticsearch ou local). | Public |
+| `POST` | `/api/jobs` | Publie une nouvelle offre d'emploi et l'indexe dans Elasticsearch. | `admin`, `recruiter` |
+| `DELETE` | `/api/jobs/<int:job_id>` | Supprime une offre du catalogue et d'Elasticsearch. | `admin` |
+| `GET` | `/api/es/status` | Indique l'état du moteur Elasticsearch (en ligne / hors ligne). | Public |
+| `POST` | `/api/admin/reindex` | Réindexe toutes les offres dans Elasticsearch. | `admin` |
+| `POST` | `/api/auth/register` | Inscription d'un nouveau candidat. | Public |
+| `POST` | `/api/auth/login` | Connexion à un compte existant. | Public |
+| `GET` | `/api/auth/me` | Profil de l'utilisateur connecté. | Connecté |
+| `POST` | `/api/auth/logout` | Déconnexion. | Connecté |
+| `GET` | `/mes-candidatures` | Dashboard personnel du candidat. | `candidate` |
+| `GET` | `/espace` | Dashboard de l'administrateur / recruteur. | `admin`, `recruiter` |
+| `GET` | `/api/applications` | Liste des candidatures de l'utilisateur. | `candidate`, `admin`, `recruiter` |
+| `POST` | `/api/applications` | Envoie une candidature pour une offre. | `candidate`, `admin` |
+| `DELETE` | `/api/applications/<int:app_id>` | Retire/supprime une candidature. | Propriétaire ou `admin` |
+| `GET` | `/api/management/applications` | Liste toutes les candidatures reçues. | `admin`, `recruiter` |
+| `GET` | `/health` | Contrôle de santé de l'API. | Public |
 
-Les liens vers ces espaces s’affichent après connexion et selon le rôle. Les pages et les API contrôlent également le rôle côté serveur : masquer un lien dans le navigateur ne constitue pas le contrôle d’accès.
+---
 
-### Ce qui n’est pas encore inclus
+## Lancement local de l'application
 
-Cette version ne propose pas encore de gestion graphique des comptes et des rôles, de création/modification d’offres, de changement de statut des candidatures, de notifications, de dépôt de CV ni de déploiement en production. L’espace administrateur sert actuellement à consulter les candidatures, pas à administrer tous les éléments de la plateforme.
-
-## Rôles et création d’un compte administrateur de démonstration
-
-Pour des raisons de sécurité, l’inscription publique ne permet de créer que des comptes candidats. Il n’existe pas de compte administrateur ni de mot de passe administrateur prédéfini.
-
-Pour tester l’espace administrateur localement :
-
-1. Démarrez l’application et inscrivez un compte depuis le formulaire.
-2. Arrêtez le serveur.
-3. Ouvrez `data\users.json` dans un éditeur local et changez le champ `"role"` du compte souhaité de `"candidate"` à `"admin"`. Ne modifiez pas `password_hash`.
-4. Redémarrez l’application et reconnectez-vous avec ce compte. Le lien **Espace admin** ouvre `/espace`.
-
-Pour créer un recruteur de démonstration, la même procédure s’applique avec le rôle `"recruiter"`. Ne modifiez les rôles que dans un environnement local de confiance. La modification manuelle des fichiers JSON est une procédure de démonstration, pas un mécanisme d’administration adapté à une mise en production.
-
-## Architecture et données
-
-- **Serveur :** Python et Flask (`app.py`).
-- **Interface :** modèles HTML/Jinja dans `templates\`, JavaScript et styles dans `static\`.
-- **Persistance de démonstration :** `data\users.json` pour les comptes et `data\applications.json` pour les candidatures.
-- **Stockage des sessions :** session Flask protégée par la clé configurée dans `SECRET_KEY`.
-- **Tests :** tests unitaires Python dans `tests\test_app.py` et tests d’API HTTP Robot Framework dans `tests\robot\job_search.robot`.
-
-Le dossier `data\` et ses fichiers sont créés au premier enregistrement. Ils sont ignorés par Git afin de ne pas versionner les comptes ou les candidatures. La variable d’environnement `DATA_DIR` permet de choisir un autre dossier de données.
-
-Les fichiers JSON sont prévus pour une démonstration locale avec une seule instance. Ils ne conviennent pas comme stockage de production ou pour plusieurs instances concurrentes. Pour un déploiement réel, il faudra notamment les remplacer par une base de données, définir une clé secrète privée et persistante, utiliser HTTPS avec `COOKIE_SECURE=true`, protéger les données personnelles et prévoir les procédures de sauvegarde et de contrôle d’accès adaptées.
-
-## Installation et lancement local
-
-Depuis la racine du dépôt, dans PowerShell :
+Dans PowerShell :
 
 ```powershell
 python -m venv .venv
@@ -89,56 +93,25 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-Ouvrez ensuite <http://127.0.0.1:5000>. Pour arrêter le serveur, utilisez `Ctrl+C` dans la fenêtre PowerShell où il tourne.
+L'application est disponible sur **<http://127.0.0.1:5000>**.
 
-Le serveur Flask intégré est destiné au développement et à la démonstration locale, pas à l’hébergement en production.
+---
 
-## Vérification et tests
+## Exécution des Tests
 
-### Tests unitaires
+### 1. Tests Automatisés Robot Framework (31 tests au total)
+
+```powershell
+python -m robot --outputdir results tests/robot/
+```
+
+Les rapports et journaux interactifs sont générés dans :
+- `results\report.html`
+- `results\log.html`
+- `results\output.xml`
+
+### 2. Tests Unitaires Python
 
 ```powershell
 python -m unittest discover -s tests -v
-```
-
-Ils couvrent notamment le hachage du mot de passe, la persistance JSON, la séparation des candidatures par utilisateur et les permissions des rôles.
-
-### Tests Robot Framework
-
-```powershell
-python -m robot --outputdir results tests/robot
-```
-
-La suite démarre une instance de test sur le port 5001, utilise un dossier temporaire pour les données, puis arrête le serveur. Elle vérifie les routes HTTP, la recherche, l’authentification, les candidatures, les rôles et les pages séparées. Elle contrôle l’API et le balisage HTML ; elle ne simule pas les interactions dans un vrai navigateur.
-
-Les rapports Robot sont générés dans `results\report.html`, `results\log.html` et `results\output.xml`.
-
-## Routes principales
-
-| Méthode | Route | Description | Accès |
-| --- | --- | --- | --- |
-| `GET` | `/` | Page d’accueil et catalogue d’offres. | Public |
-| `GET` | `/api/jobs?q=...&location=...&contract=...` | Recherche les offres selon les filtres fournis. | Public |
-| `POST` | `/api/auth/register` | Crée un compte candidat et ouvre une session. | Public |
-| `POST` | `/api/auth/login` | Authentifie un compte existant. | Public |
-| `GET` | `/api/auth/me` | Renvoie le profil de la session active. | Connecté |
-| `POST` | `/api/auth/logout` | Ferme la session active. | Connecté |
-| `GET` | `/mes-candidatures` | Page des candidatures personnelles. | `candidate` |
-| `GET` | `/espace` | Page de suivi des candidatures reçues. | `recruiter`, `admin` |
-| `GET` | `/api/applications` | Liste les candidatures de l’utilisateur connecté. | `candidate` |
-| `POST` | `/api/applications` | Envoie une candidature pour une offre existante. | `candidate` |
-| `GET` | `/api/management/applications` | Liste les candidatures reçues. | `recruiter`, `admin` |
-| `GET` | `/health` | Vérifie que le serveur répond. | Public |
-
-## Organisation des principaux fichiers
-
-```text
-app.py                         Routes Flask, authentification, rôles et stockage JSON
-templates\index.html           Page d’accueil et recherche d’offres
-templates\applications.html   Modèle commun des espaces de candidatures
-static\app.js                  Interactions de la page d’accueil
-static\applications.js         Chargement et affichage des candidatures
-static\style.css               Style responsive et thème marocain
-tests\test_app.py              Tests unitaires
-tests\robot\job_search.robot   Tests HTTP Robot Framework
 ```

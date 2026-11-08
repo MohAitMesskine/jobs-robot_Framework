@@ -15,6 +15,7 @@ ${SERVER_ALIAS}   minijob-test-server
 La page d'accueil expose la recherche et les formulaires de compte
     ${response}=    GET On Session    minijob    /
     Should Be Equal As Integers    ${response.status_code}    200
+    Should Contain    ${response.text}    MyJobs Maroc
     Should Contain    ${response.text}    MiniJob Maroc
     Should Contain    ${response.text}    search-form
     Should Contain    ${response.text}    login-form

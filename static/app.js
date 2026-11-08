@@ -15,13 +15,13 @@ let selectedJob = null;
 
 function createJobCard(job) {
   const card = document.createElement("article");
-  card.className = "job-card";
+  card.className = "job-card morocco-job-card";
 
   const top = document.createElement("div");
   top.className = "job-card-top";
 
   const companyMark = document.createElement("span");
-  companyMark.className = "company-mark";
+  companyMark.className = "company-mark morocco-mark";
   companyMark.textContent = job.company.charAt(0);
   companyMark.setAttribute("aria-hidden", "true");
 
@@ -34,7 +34,7 @@ function createJobCard(job) {
   details.append(title, company);
 
   const contract = document.createElement("span");
-  contract.className = "contract-badge";
+  contract.className = `contract-badge contract-${(job.contract || "cdi").toLowerCase()}`;
   contract.textContent = job.contract;
   top.append(companyMark, details, contract);
 
@@ -42,24 +42,45 @@ function createJobCard(job) {
   description.className = "job-description";
   description.textContent = job.description;
 
+  // Render tags if available
+  let tagsContainer = null;
+  if (Array.isArray(job.tags) && job.tags.length > 0) {
+    tagsContainer = document.createElement("div");
+    tagsContainer.className = "job-tags-container";
+    job.tags.slice(0, 4).forEach((tag) => {
+      const tagChip = document.createElement("span");
+      tagChip.className = "job-tag-chip";
+      tagChip.textContent = tag;
+      tagsContainer.append(tagChip);
+    });
+  }
+
   const bottom = document.createElement("div");
   bottom.className = "job-card-bottom";
   const metadata = document.createElement("div");
   metadata.className = "job-metadata";
   const location = document.createElement("span");
-  location.textContent = `⌖  ${job.location}`;
+  location.className = "meta-location";
+  location.textContent = `📍 ${job.location}`;
   const salary = document.createElement("span");
-  salary.textContent = `↗  ${job.salary}`;
+  salary.className = "meta-salary";
+  salary.textContent = `🇲🇦 ${job.salary}`;
   metadata.append(location, salary);
 
   const apply = document.createElement("button");
-  apply.className = "apply-button";
+  apply.className = "apply-button morocco-apply-btn";
   apply.type = "button";
-  apply.textContent = "Postuler";
+  apply.textContent = "Postuler ↗";
   apply.setAttribute("aria-label", `Postuler : ${job.title}`);
   apply.addEventListener("click", () => selectJob(job));
   bottom.append(metadata, apply);
-  card.append(top, description, bottom);
+
+  if (tagsContainer) {
+    card.append(top, description, tagsContainer, bottom);
+  } else {
+    card.append(top, description, bottom);
+  }
+
   return card;
 }
 
@@ -71,7 +92,7 @@ function selectJob(job) {
   feedback.textContent = "";
   if (!currentUser) {
     authPanel.hidden = false;
-    authFeedback.textContent = "Connectez-vous ou créez un compte pour postuler.";
+    authFeedback.textContent = "Connectez-vous ou créez un compte candidat pour postuler.";
     authPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     document.querySelector("#login-email").focus({ preventScroll: true });
     return;
@@ -84,21 +105,22 @@ function selectJob(job) {
 function updateAuthControls() {
   const userStatus = document.querySelector("#user-status");
   userStatus.hidden = !currentUser;
-  const roleNames = { candidate: "Candidat·e", recruiter: "Recruteur·euse", admin: "Admin" };
+  const roleNames = { candidate: "Candidat", recruiter: "Recruteur", admin: "Administrateur", employee: "Employé" };
   userStatus.textContent = currentUser
-    ? `Bonjour, ${currentUser.name} · ${roleNames[currentUser.role] || currentUser.role}`
+    ? `Maroc · ${currentUser.name} (${roleNames[currentUser.role] || currentUser.role})`
     : "";
   authToggle.hidden = Boolean(currentUser);
   logoutButton.hidden = !currentUser;
-  staffWorkspaceLink.hidden = !currentUser || !["admin", "recruiter"].includes(currentUser.role);
+  staffWorkspaceLink.hidden = !currentUser || !["admin", "recruiter", "employee"].includes(currentUser.role);
   candidateWorkspaceLink.hidden = !currentUser || currentUser.role !== "candidate";
   if (currentUser?.role === "admin") staffWorkspaceLink.textContent = "Espace admin";
+  if (currentUser?.role === "employee") staffWorkspaceLink.textContent = "Espace employé";
   if (currentUser?.role === "recruiter") staffWorkspaceLink.textContent = "Espace recruteur";
 }
 
 async function submitAuthForm(event, endpoint) {
   event.preventDefault();
-  authFeedback.textContent = "Vérification en cours…";
+  authFeedback.textContent = "Authentification en cours…";
   const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
 
   try {
@@ -111,7 +133,7 @@ async function submitAuthForm(event, endpoint) {
     if (!response.ok) throw new Error(result.error || "Authentification impossible.");
     currentUser = result.user;
     updateAuthControls();
-    authFeedback.textContent = "Vous êtes connecté·e.";
+    authFeedback.textContent = "Connexion réussie.";
     document.querySelector("#login-form").reset();
     document.querySelector("#register-form").reset();
     authPanel.hidden = true;
@@ -132,11 +154,13 @@ async function loadJobs(event) {
     const response = await fetch(`/api/jobs${query ? `?${query}` : ""}`);
     if (!response.ok) throw new Error("Impossible de charger les offres.");
     const data = await response.json();
-    resultsCount.textContent = `${data.jobs.length} offre${data.jobs.length > 1 ? "s" : ""} trouvée${data.jobs.length > 1 ? "s" : ""}`;
+    const sourceText = data.source === "elasticsearch" ? " · Moteur Elasticsearch" : "";
+    resultsCount.textContent = `${data.jobs.length} offre${data.jobs.length > 1 ? "s" : ""} trouvée${data.jobs.length > 1 ? "s" : ""}${sourceText}`;
+
     if (data.jobs.length === 0) {
       const empty = document.createElement("p");
       empty.className = "empty-state";
-      empty.textContent = "Aucune offre ne correspond à votre recherche. Essayez d’autres critères.";
+      empty.textContent = "Aucune offre ne correspond à votre recherche au Maroc. Essayez d’autres critères.";
       jobList.append(empty);
       return;
     }
@@ -149,7 +173,21 @@ async function loadJobs(event) {
 searchForm.addEventListener("submit", loadJobs);
 document.querySelector("#clear-filters").addEventListener("click", () => {
   searchForm.reset();
+  document.querySelectorAll(".city-chip").forEach(b => b.classList.remove("active"));
   loadJobs();
+});
+
+// Quick city filter buttons
+document.querySelectorAll(".city-chip").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".city-chip").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    const citySelect = document.querySelector("#search-location");
+    if (citySelect) {
+      citySelect.value = btn.dataset.city || "";
+      loadJobs();
+    }
+  });
 });
 
 authToggle.addEventListener("click", () => {
@@ -159,12 +197,14 @@ authToggle.addEventListener("click", () => {
     document.querySelector("#login-email").focus({ preventScroll: true });
   }
 });
+
 document.querySelector("#login-form").addEventListener("submit", (event) => {
   submitAuthForm(event, "/api/auth/login");
 });
 document.querySelector("#register-form").addEventListener("submit", (event) => {
   submitAuthForm(event, "/api/auth/register");
 });
+
 logoutButton.addEventListener("click", async () => {
   try {
     const response = await fetch("/api/auth/logout", { method: "POST" });
@@ -193,12 +233,28 @@ applicationForm.addEventListener("submit", async (event) => {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "L’envoi a échoué.");
-    feedback.textContent = "Merci ! Votre candidature a bien été envoyée.";
+    feedback.textContent = "Votre candidature a été transmise avec succès au recruteur au Maroc.";
     applicationForm.reset();
   } catch (error) {
     feedback.textContent = error.message;
   }
 });
+
+async function checkEsBadge() {
+  const badge = document.querySelector("#es-live-badge");
+  if (!badge) return;
+  try {
+    const res = await fetch("/api/es/status");
+    const data = await res.json();
+    if (data.status === "online") {
+      badge.innerHTML = '<span class="pulse-dot online"></span> Moteur Elasticsearch actif';
+    } else {
+      badge.innerHTML = '<span class="pulse-dot fallback"></span> Recherche locale rapide (Cluster 9200 hors ligne)';
+    }
+  } catch {
+    badge.innerHTML = '<span class="pulse-dot"></span> Moteur de recherche MyJobs';
+  }
+}
 
 async function loadCurrentUser() {
   try {
@@ -219,6 +275,6 @@ async function loadCurrentUser() {
   }
 }
 
+checkEsBadge();
 loadCurrentUser();
-
 loadJobs();
